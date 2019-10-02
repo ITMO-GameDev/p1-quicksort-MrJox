@@ -12,5 +12,6 @@
 // TODO: add headers that you want to pre-compile here
 #include <vector>
 #include <assert.h>
+#include <iostream>
 
 #endif //PCH_H

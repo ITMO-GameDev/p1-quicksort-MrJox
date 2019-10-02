@@ -3,7 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.28307.852
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "p1-quicksort-MrJox", "p1-quicksort-MrJox.vcxproj", "{58325803-9918-4EFB-9754-F6DE465E50AD}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Qsort", "Qsort\Qsort.vcxproj", "{58325803-9918-4EFB-9754-F6DE465E50AD}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Qsort-Test", "Qsort-Test\Qsort-Test.vcxproj", "{70567810-6262-41A5-ADBA-A231EB3C86ED}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,14 @@ Global
 		{58325803-9918-4EFB-9754-F6DE465E50AD}.Release|x64.Build.0 = Release|x64
 		{58325803-9918-4EFB-9754-F6DE465E50AD}.Release|x86.ActiveCfg = Release|Win32
 		{58325803-9918-4EFB-9754-F6DE465E50AD}.Release|x86.Build.0 = Release|Win32
+		{70567810-6262-41A5-ADBA-A231EB3C86ED}.Debug|x64.ActiveCfg = Debug|x64
+		{70567810-6262-41A5-ADBA-A231EB3C86ED}.Debug|x64.Build.0 = Debug|x64
+		{70567810-6262-41A5-ADBA-A231EB3C86ED}.Debug|x86.ActiveCfg = Debug|Win32
+		{70567810-6262-41A5-ADBA-A231EB3C86ED}.Debug|x86.Build.0 = Debug|Win32
+		{70567810-6262-41A5-ADBA-A231EB3C86ED}.Release|x64.ActiveCfg = Release|x64
+		{70567810-6262-41A5-ADBA-A231EB3C86ED}.Release|x64.Build.0 = Release|x64
+		{70567810-6262-41A5-ADBA-A231EB3C86ED}.Release|x86.ActiveCfg = Release|Win32
+		{70567810-6262-41A5-ADBA-A231EB3C86ED}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
