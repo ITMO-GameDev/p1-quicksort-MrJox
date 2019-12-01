@@ -13,5 +13,7 @@
 #include <vector>
 #include <assert.h>
 #include <iostream>
+#include <stdexcept>
+#include <string>
 
 #endif //PCH_H

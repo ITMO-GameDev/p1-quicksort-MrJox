@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "../../Qsort/src/sort.hpp"
-using sort::qsort;
-using sort::is_sorted;
+
+using namespace sort;
 
 auto compare_asc_expr = [](int a, int b) { return a < b; };
 auto compare_desc_expr = [](int a, int b) { return a > b; };

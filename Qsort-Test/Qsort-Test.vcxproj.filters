@@ -4,7 +4,10 @@
     <ClCompile Include="src\pch.cpp">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="src\test.cpp">
+    <ClCompile Include="src\qsort_test.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\array_test.cpp">
       <Filter>src</Filter>
     </ClCompile>
   </ItemGroup>
