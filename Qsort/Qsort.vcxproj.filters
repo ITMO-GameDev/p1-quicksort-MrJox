@@ -32,5 +32,11 @@
     <ClInclude Include="src\sort.hpp">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\dictionary.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\rbtree.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
