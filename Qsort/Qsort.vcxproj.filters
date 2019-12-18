@@ -32,5 +32,8 @@
     <ClInclude Include="src\sort.hpp">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\memory.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
