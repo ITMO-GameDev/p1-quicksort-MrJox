@@ -2,154 +2,145 @@
 #include "pch.h"
 using namespace std;
 
-constexpr auto DEFAULT_CHUNK_SIZE	= 64;
-constexpr auto DEFAULT_CHUNKS_COUNT	= 4096;
+constexpr size_t DEFAULT_CHUNK_SIZE		= 16;
+constexpr size_t DEFAULT_CHUNKS_COUNT	= 256;
 
-class MemoryAllocator {
-protected:
+class FSA {
+private:
+#pragma pack(push, 8)
 	struct Chunk {
 		Chunk* pNext = nullptr;
 	};
-
+#pragma pack(pop)
 public:
-	MemoryAllocator();
-	MemoryAllocator(size_t, size_t);
-	virtual ~MemoryAllocator();
-
-	MemoryAllocator(MemoryAllocator const&) = delete;
-	MemoryAllocator& operator=(MemoryAllocator const&) = delete;
-	MemoryAllocator(MemoryAllocator&&) = delete;
-	MemoryAllocator& operator=(MemoryAllocator&&) = delete;
-
-	virtual void init() = 0;
-	virtual void destroy() = 0;
-
-	virtual void* alloc(size_t) = 0;
-	virtual void free(void*) = 0;
-
-#ifdef _DEBUG
-	virtual void dumpStat() const = 0;
-	virtual void dumpBlocks() const = 0;
-#endif
-
-protected:
-	Chunk*	pAlloc;
-	void*	pPool;
-	size_t	chunkSize;
-	size_t	chunksCount;
-	size_t	usedChunksCount;
-#ifdef _DEBUG
-	size_t	freeChunksCount;
-	size_t	allocChunksCount;
-#endif
-	bool	isInit;
-};
-
-class FSA final : public MemoryAllocator {
-public:
-	FSA();
+	FSA(size_t = DEFAULT_CHUNK_SIZE, size_t = DEFAULT_CHUNKS_COUNT);
 	virtual ~FSA();
 
-	virtual void init() final;
-	virtual void destroy() final;
-
-	virtual void* alloc(size_t size) override;
-	virtual void free(void* p) override;
-
+	virtual void* alloc(size_t size);
+	virtual void free(void* p);
+	virtual void init();
+	virtual void destroy();
 #ifdef _DEBUG
-	virtual void dumpStat() const override;
-	virtual void dumpBlocks() const override;
+	virtual void dumpStat() const;
+	virtual void dumpBlocks() const;
 #endif
 
+private:
+	Chunk* allocatePool(size_t);
+
+private:
+	Chunk* pAlloc;
+	size_t chunkSize;
+	size_t chunksCount;
+#ifdef _DEBUG
+	size_t usedChunksCount;
+#endif
 };
 
-class FLA final : public MemoryAllocator {
+class FLA {
 public:
 	FLA();
 	virtual ~FLA();
 
-	virtual void init() final;
-	virtual void destroy() final;
-
-	virtual void* alloc(size_t size) override;
-	virtual void free(void* p) override;
-
+	virtual void* alloc(size_t size);
+	virtual void free(void* p);
+	virtual void init();
+	virtual void destroy();
 #ifdef _DEBUG
-	virtual void dumpStat() const override;
-	virtual void dumpBlocks() const override;
+	virtual void dumpStat() const;
+	virtual void dumpBlocks() const;
 #endif
+
+private:
 
 };
 
-MemoryAllocator::MemoryAllocator() :
-	MemoryAllocator(DEFAULT_CHUNK_SIZE, DEFAULT_CHUNKS_COUNT)
-{}
-
-MemoryAllocator::MemoryAllocator(size_t chunkSize, size_t chunksCount) :
-	  isInit(false)
-	, pAlloc(nullptr)
-	, pPool(nullptr)
-	, chunkSize(chunkSize)
-	, chunksCount(chunksCount)
-	, usedChunksCount(0)
+FSA::FSA(size_t chunkSize, size_t chunksCount) :
+	pAlloc(nullptr),
 #ifdef _DEBUG
-	, freeChunksCount(0)
-	, allocChunksCount(0)
+	usedChunksCount(0),
 #endif
-{
+	chunkSize(chunkSize),
+	chunksCount(chunksCount) {
 
 #ifdef _DEBUG
-	printf_s("MemoryAllocator(chunk size: %i, chunks count: %i)\n", chunkSize, chunksCount);
-#endif
-}
-
-MemoryAllocator::~MemoryAllocator() {
-#ifdef _DEBUG
-	cout << "~MemoryAllocator()" << endl;
-#endif
-}
-
-FSA::FSA() :
-	MemoryAllocator() {
-#ifdef _DEBUG
-	cout << "FMA()" << endl;
+	printf_s("FSA(chunk size: %i, chunks count: %i)\n", (int)chunkSize, (int)chunksCount);
 #endif
 }
 
 FSA::~FSA() {
 #ifdef _DEBUG
-	cout << "~FMA()" << endl;
+	cout << "~FSA()" << endl;
 #endif
 	destroy();
-	assert(!isInit);
+	assert(pAlloc == nullptr);
 }
 
 void FSA::init() {
-	//pPool = new void[static_cast<size_t>(chunksCount) * static_cast<size_t>(chunkSize)];
-	isInit = true;
+	assert(pAlloc == nullptr);
+
+	if (pAlloc) {
+#ifdef _DEBUG
+		cout << "FSA::init(): pAlloc isn't nullptr." << endl;
+#endif
+		return;
+	}
+
+	pAlloc = allocatePool(chunkSize * chunksCount);
 }
 
 void FSA::destroy() {
-	assert(isInit);
-	::free(pPool);
-	isInit = false;
+#ifdef _DEBUG
+	assert(usedChunksCount == 0);
+#endif
+	assert(pAlloc);
+
+	delete[] pAlloc;
+	pAlloc = nullptr;
 }
 
 void* FSA::alloc(size_t size) {
-	assert(isInit);
-	assert(size <= chunkSize);
-	assert(usedChunksCount < chunksCount);
+	assert(pAlloc);
 
+#ifndef _DEBUG
+	if (size > chunkSize) {
+#else
 	if (size > chunkSize || usedChunksCount >= chunksCount) {
+#endif
 		return nullptr;
 	}
 
-	return nullptr;
+#ifdef _DEBUG
+	++usedChunksCount;
+#endif
+	void* pFreeChunk = reinterpret_cast<void*>(pAlloc);
+	pAlloc = pAlloc->pNext;
+	return pFreeChunk;
 }
 
 void FSA::free(void* p) {
-	assert(isInit);
+	assert(pAlloc);
+	assert(p);
 
+	Chunk* pUsedChunk = reinterpret_cast<Chunk*>(p);
+	pUsedChunk->pNext = pAlloc;
+	pAlloc = pUsedChunk;
+#ifdef _DEBUG
+	--usedChunksCount;
+#endif
+}
+
+FSA::Chunk* FSA::allocatePool(size_t size) {
+	Chunk* pPoolHead = new Chunk[size];
+	Chunk* pCurrentChunk = pPoolHead;
+
+	for (int i = 0; i < chunksCount - 1; ++i) {
+		pCurrentChunk->pNext = reinterpret_cast<Chunk*>(reinterpret_cast<char*>(pCurrentChunk) + chunkSize);
+		pCurrentChunk = pCurrentChunk->pNext;
+	}
+
+	pCurrentChunk->pNext = nullptr;
+	return pPoolHead;
 }
 
 #ifdef _DEBUG
@@ -162,8 +153,7 @@ void FSA::dumpBlocks() const {
 }
 #endif
 
-FLA::FLA() :
-	MemoryAllocator() {
+FLA::FLA() {
 #ifdef _DEBUG
 	cout << "FLA()" << endl;
 #endif
@@ -174,25 +164,21 @@ FLA::~FLA() {
 	cout << "~FLA()" << endl;
 #endif
 	destroy();
-	assert(!isInit);
 }
 
 void FLA::init() {
-	isInit = true;
+
 }
 
 void FLA::destroy() {
-	assert(isInit);
-	isInit = false;
+
 }
 
 void* FLA::alloc(size_t size) {
-	assert(isInit);
 	return nullptr;
 }
 
 void FLA::free(void* p) {
-	assert(isInit);
 
 }
 
