@@ -6,9 +6,14 @@ constexpr auto DEFAULT_CHUNK_SIZE	= 64;
 constexpr auto DEFAULT_CHUNKS_COUNT	= 4096;
 
 class MemoryAllocator {
+protected:
+	struct Chunk {
+		Chunk* pNext = nullptr;
+	};
+
 public:
 	MemoryAllocator();
-	MemoryAllocator(int, int);
+	MemoryAllocator(size_t, size_t);
 	virtual ~MemoryAllocator();
 
 	MemoryAllocator(MemoryAllocator const&) = delete;
@@ -28,13 +33,14 @@ public:
 #endif
 
 protected:
+	Chunk*	pAlloc;
 	void*	pPool;
-	int		chunkSize;
-	int		chunksCount;
-	int		usedChunksCount;
+	size_t	chunkSize;
+	size_t	chunksCount;
+	size_t	usedChunksCount;
 #ifdef _DEBUG
-	int		freeChunksCount;
-	int		allocChunksCount;
+	size_t	freeChunksCount;
+	size_t	allocChunksCount;
 #endif
 	bool	isInit;
 };
@@ -79,15 +85,22 @@ MemoryAllocator::MemoryAllocator() :
 	MemoryAllocator(DEFAULT_CHUNK_SIZE, DEFAULT_CHUNKS_COUNT)
 {}
 
-MemoryAllocator::MemoryAllocator(int chunkSize, int chunksCount) :
+MemoryAllocator::MemoryAllocator(size_t chunkSize, size_t chunksCount) :
+	  isInit(false)
+	, pAlloc(nullptr)
+	, pPool(nullptr)
+	, chunkSize(chunkSize)
+	, chunksCount(chunksCount)
+	, usedChunksCount(0)
 #ifdef _DEBUG
-	isInit(false), pPool(nullptr), chunkSize(chunkSize), chunksCount(chunksCount), usedChunksCount(0), freeChunksCount(0), allocChunksCount(0) {
-	printf_s("MemoryAllocator(chunk size: %i, chunks count: %i)\n", chunkSize, chunksCount);
-
-#else
-	isInit(false), pPool(nullptr), chunkSize(chunkSize), chunksCount(chunksCount), usedChunksCount(0) {
+	, freeChunksCount(0)
+	, allocChunksCount(0)
 #endif
+{
 
+#ifdef _DEBUG
+	printf_s("MemoryAllocator(chunk size: %i, chunks count: %i)\n", chunkSize, chunksCount);
+#endif
 }
 
 MemoryAllocator::~MemoryAllocator() {
@@ -112,7 +125,7 @@ FSA::~FSA() {
 }
 
 void FSA::init() {
-	pPool = ::malloc(static_cast<size_t>(chunksCount) * static_cast<size_t>(chunkSize));
+	//pPool = new void[static_cast<size_t>(chunksCount) * static_cast<size_t>(chunkSize)];
 	isInit = true;
 }
 
