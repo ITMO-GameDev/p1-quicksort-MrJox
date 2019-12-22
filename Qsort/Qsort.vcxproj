@@ -156,9 +156,9 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\avl_tree.hpp" />
     <ClInclude Include="src\dictionary.hpp" />
     <ClInclude Include="src\pch.h" />
-    <ClInclude Include="src\rbtree.hpp" />
     <ClInclude Include="src\sort.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

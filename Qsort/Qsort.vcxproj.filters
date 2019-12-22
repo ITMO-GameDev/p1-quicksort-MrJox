@@ -35,7 +35,7 @@
     <ClInclude Include="src\dictionary.hpp">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\rbtree.hpp">
+    <ClInclude Include="src\avl_tree.hpp">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
