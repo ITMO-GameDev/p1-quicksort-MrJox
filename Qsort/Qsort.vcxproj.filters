@@ -29,5 +29,14 @@
     <ClInclude Include="src\pch.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\sort.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\dictionary.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\avl_tree.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
