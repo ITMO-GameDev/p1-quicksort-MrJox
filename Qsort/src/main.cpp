@@ -6,21 +6,14 @@ using namespace std;
 using namespace helper;
 
 int main(int argc, char* argv[]) {
-	FSA allocator;
-	allocator.init();
-
-	int* pi = reinterpret_cast<int*>(allocator.alloc(sizeof(int)));
-	double* pd = reinterpret_cast<double*>(allocator.alloc(sizeof(double)));
-	//int* pa = reinterpret_cast<int*>(allocator.alloc(10 * sizeof(int)));
-
-#ifdef _DEBUG
-	allocator.dumpStat();
-	allocator.dumpBlocks();
-#endif
-	allocator.free(reinterpret_cast<void*>(pi));
-	allocator.free(reinterpret_cast<void*>(pd));
-	//allocator.free(reinterpret_cast<void*>(pa));
-	allocator.destroy();
+	MemoryAllocator alloc;
+	alloc.init();
+	void* p1 = alloc.alloc(256);
+	void* p2 = alloc.alloc(2000000);
+	alloc.dumpStat();
+	alloc.free(p1);
+	alloc.free(p2);
+	alloc.dumpStat();
 
 	return 0;
 }

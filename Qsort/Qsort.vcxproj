@@ -156,6 +156,9 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\fixed_size_allocator.hpp" />
+    <ClInclude Include="src\free_list_allocator.hpp" />
+    <ClInclude Include="src\linked_list.hpp" />
     <ClInclude Include="src\memory.hpp" />
     <ClInclude Include="src\pch.h" />
     <ClInclude Include="src\sort.hpp" />

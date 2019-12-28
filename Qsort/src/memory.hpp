@@ -1,193 +1,212 @@
-#pragma once
+#ifndef _MEMORY_HPP
+#define _MEMORY_HPP
+
 #include "pch.h"
-using namespace std;
+#include "fixed_size_allocator.hpp"
+#include "free_list_allocator.hpp"
 
-constexpr size_t DEFAULT_CHUNK_SIZE		= 16;
-constexpr size_t DEFAULT_CHUNKS_COUNT	= 256;
-
-class FSA {
+class MemoryAllocator {
 private:
-#pragma pack(push, 8)
-	struct Chunk {
-		Chunk* pNext = nullptr;
-	};
-#pragma pack(pop)
-public:
-	FSA(size_t = DEFAULT_CHUNK_SIZE, size_t = DEFAULT_CHUNKS_COUNT);
-	virtual ~FSA();
+	constexpr static uint POOLS_COUNT			= 6;
+	constexpr static uint POOL_MIN_CHUNK_SIZE	= 16;
+	constexpr static uint POOL_MAX_CHUNK_SIZE	= 512;
+	constexpr static uint POOL_CHUNKS_COUNT		= 1024;
+	constexpr static uint TEN_MB				= 10485760;
 
-	virtual void* alloc(size_t size);
-	virtual void free(void* p);
+public:
+	MemoryAllocator();
+	virtual ~MemoryAllocator();
+
+	MemoryAllocator(MemoryAllocator const&) = delete;
+	MemoryAllocator& operator=(MemoryAllocator const&) = delete;
+	MemoryAllocator(MemoryAllocator&&) = delete;
+	MemoryAllocator& operator=(MemoryAllocator&&) = delete;
+
 	virtual void init();
 	virtual void destroy();
+	virtual void* alloc(size_t);
+	virtual void free(void*);
 #ifdef _DEBUG
 	virtual void dumpStat() const;
 	virtual void dumpBlocks() const;
 #endif
 
 private:
-	Chunk* allocatePool(size_t);
+	size_t getPoolIndex(size_t);
 
 private:
-	Chunk* pAlloc;
-	size_t chunkSize;
-	size_t chunksCount;
+	vector<FixedSizeAllocator*>	memoryPools;
+	vector<FreeListAllocator*> memoryLists;
+	vector<void*> memoryHeap;
 #ifdef _DEBUG
-	size_t usedChunksCount;
+	uint nTotalMemUsed;
+	uint nTotalMemFreed;
 #endif
 };
 
-class FLA {
-public:
-	FLA();
-	virtual ~FLA();
-
-	virtual void* alloc(size_t size);
-	virtual void free(void* p);
-	virtual void init();
-	virtual void destroy();
+MemoryAllocator::MemoryAllocator()
 #ifdef _DEBUG
-	virtual void dumpStat() const;
-	virtual void dumpBlocks() const;
+	: nTotalMemUsed(0)
+	, nTotalMemFreed(0)
 #endif
-
-private:
-
-};
-
-FSA::FSA(size_t chunkSize, size_t chunksCount) :
-	pAlloc(nullptr),
-#ifdef _DEBUG
-	usedChunksCount(0),
-#endif
-	chunkSize(chunkSize),
-	chunksCount(chunksCount) {
-
-#ifdef _DEBUG
-	printf_s("FSA(chunk size: %i, chunks count: %i)\n", (int)chunkSize, (int)chunksCount);
-#endif
-}
-
-FSA::~FSA() {
-#ifdef _DEBUG
-	cout << "~FSA()" << endl;
-#endif
-	destroy();
-	assert(pAlloc == nullptr);
-}
-
-void FSA::init() {
-	assert(pAlloc == nullptr);
-
-	if (pAlloc) {
-#ifdef _DEBUG
-		cout << "FSA::init(): pAlloc isn't nullptr." << endl;
-#endif
-		return;
+{
+	for (size_t i = 0; i < POOLS_COUNT; ++i) {
+		FixedSizeAllocator* pPool = new FixedSizeAllocator;
+		memoryPools.push_back(pPool);
 	}
 
-	pAlloc = allocatePool(chunkSize * chunksCount);
+	memoryLists.push_back(new FreeListAllocator(TEN_MB));
 }
 
-void FSA::destroy() {
+MemoryAllocator::~MemoryAllocator() {
+	destroy();
+	assert(memoryPools.size() == 0);
+	assert(memoryLists.size() == 0);
+}
+
+void MemoryAllocator::init() {
+	// init 6 pools with chunk sizes: 16, 32, 64, 128, 256, 512
+	for (size_t i = 0; i < memoryPools.size(); ++i) {
+		uint chunk_size = (uint)std::pow(2, i + 4);
+		memoryPools[i]->init(chunk_size, POOL_CHUNKS_COUNT);
+	}
+
+	memoryLists[0]->init();
+}
+
+void MemoryAllocator::destroy() {
+	for (size_t i = 0; i < memoryPools.size(); ++i) {
+		delete memoryPools[i];
+	}
+	memoryPools.clear();
+
+	for (size_t i = 0; i < memoryLists.size(); ++i) {
+		delete memoryLists[i];
+	}
+	memoryLists.clear();
+
 #ifdef _DEBUG
-	assert(usedChunksCount == 0);
+	nTotalMemFreed = 0;
+	nTotalMemUsed = 0;
 #endif
-	assert(pAlloc);
-
-	delete[] pAlloc;
-	pAlloc = nullptr;
 }
 
-void* FSA::alloc(size_t size) {
-	assert(pAlloc);
-
-#ifndef _DEBUG
-	if (size > chunkSize) {
-#else
-	if (size > chunkSize || usedChunksCount >= chunksCount) {
-#endif
+void* MemoryAllocator::alloc(size_t size) {
+	if (size == 0) {
 		return nullptr;
 	}
 
-#ifdef _DEBUG
-	++usedChunksCount;
-#endif
-	void* pFreeChunk = reinterpret_cast<void*>(pAlloc);
-	pAlloc = pAlloc->pNext;
-	return pFreeChunk;
-}
-
-void FSA::free(void* p) {
-	assert(pAlloc);
-	assert(p);
-
-	Chunk* pUsedChunk = reinterpret_cast<Chunk*>(p);
-	pUsedChunk->pNext = pAlloc;
-	pAlloc = pUsedChunk;
-#ifdef _DEBUG
-	--usedChunksCount;
-#endif
-}
-
-FSA::Chunk* FSA::allocatePool(size_t size) {
-	Chunk* pPoolHead = new Chunk[size];
-	Chunk* pCurrentChunk = pPoolHead;
-
-	for (int i = 0; i < chunksCount - 1; ++i) {
-		pCurrentChunk->pNext = reinterpret_cast<Chunk*>(reinterpret_cast<char*>(pCurrentChunk) + chunkSize);
-		pCurrentChunk = pCurrentChunk->pNext;
+	uint alignedSize = 8;
+	if (size > 8) {
+		auto closestPower = std::round(std::log(size) / std::log(2));
+		alignedSize = (uint)std::pow(2, closestPower);
 	}
 
-	pCurrentChunk->pNext = nullptr;
-	return pPoolHead;
-}
-
+	if (alignedSize >= POOL_MIN_CHUNK_SIZE && alignedSize <= POOL_MAX_CHUNK_SIZE) {
+		size_t index = getPoolIndex(alignedSize);
+		if (index > POOLS_COUNT) {
+			return nullptr;
+		}
 #ifdef _DEBUG
-void FSA::dumpStat() const {
-
-}
-
-void FSA::dumpBlocks() const {
-
-}
+		nTotalMemUsed += alignedSize;
 #endif
+		return memoryPools[index]->alloc();
+	}
 
-FLA::FLA() {
+	if (alignedSize <= TEN_MB && alignedSize > POOL_MAX_CHUNK_SIZE) {
+		void* p = nullptr;
+
+		for (size_t i = 0; i < memoryLists.size(); ++i) {
+			p = memoryLists[0]->alloc(alignedSize);
+		}
+
+		if (p != nullptr) {
 #ifdef _DEBUG
-	cout << "FLA()" << endl;
+			nTotalMemUsed += alignedSize;
 #endif
-}
-
-FLA::~FLA() {
+			return p;
+		} else {
+			auto freeList = new FreeListAllocator(TEN_MB);
+			memoryLists.push_back(freeList);
 #ifdef _DEBUG
-	cout << "~FLA()" << endl;
+			nTotalMemUsed += alignedSize;
 #endif
-	destroy();
-}
+			return freeList->alloc(alignedSize);
+		}
+	}
 
-void FLA::init() {
+	if (alignedSize > TEN_MB) {
+		uchar* p = new uchar[alignedSize];
+		memoryHeap.push_back(p);
+#ifdef _DEBUG
+		nTotalMemUsed += alignedSize;
+#endif
+		return p;
+	}
 
-}
-
-void FLA::destroy() {
-
-}
-
-void* FLA::alloc(size_t size) {
 	return nullptr;
 }
 
-void FLA::free(void* p) {
+void MemoryAllocator::free(void* p) {
+	if (p == nullptr) {
+		return;
+	}
 
+	for (size_t i = 0; i < memoryPools.size(); ++i) {
+		if (memoryPools[i]->containsAddress(p)) {
+			memoryPools[i]->free(p);
+#ifdef _DEBUG
+			nTotalMemFreed += memoryPools[i]->getChunkSize();
+#endif
+			return;
+		}
+	}
+
+	for (size_t i = 0; i < memoryLists.size(); ++i) {
+		if (memoryLists[i]->containsAddress(p)) {
+#ifdef _DEBUG
+			nTotalMemFreed += memoryLists[i]->getBlockSize(p);
+#endif
+			memoryLists[i]->free(p);
+			return;
+		}
+	}
+
+	for (size_t i = 0; i < memoryHeap.size(); ++i) {
+		if (memoryHeap[i] == p) {
+			delete[] p;
+			p = nullptr;
+			memoryHeap.erase(memoryHeap.begin() + i);
+			return;
+		}
+	}
+}
+
+size_t MemoryAllocator::getPoolIndex(size_t size) {
+	return (size_t)(std::log(size) / std::log(2)) - 4;
 }
 
 #ifdef _DEBUG
-void FLA::dumpStat() const {
+void MemoryAllocator::dumpStat() const {
+	for (size_t i = 0; i < memoryPools.size(); ++i) {
+		cout << "POOL #" << i + 1 << endl;
+		cout << "=========================================================" << endl;
+		memoryPools[i]->dumpStat();
+	}
 
+	for (size_t i = 0; i < memoryLists.size(); ++i) {
+		cout << "FREE LIST #" << i + 1 << endl;
+		cout << "=========================================================" << endl;
+		memoryLists[i]->dumpStat();
+	}
+
+	cout << "TOTAL MEMORY ALLOCATED:\t" << nTotalMemUsed << endl;
+	cout << "TOTAL MEMORY FREED:\t" << nTotalMemFreed << endl;
 }
 
-void FLA::dumpBlocks() const {
+void MemoryAllocator::dumpBlocks() const {
 
 }
-#endif
+#endif	//!_DEBUG
+
+#endif	//!_MEMORY_HPP
