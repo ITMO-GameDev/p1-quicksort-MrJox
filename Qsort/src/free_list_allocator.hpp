@@ -10,19 +10,18 @@ class FreeListAllocator {
 private:
 	constexpr static uint DEFAULT_ALIGNMENT = 8;
 
-	struct FreeHeader {
-		size_t blockSize;
-	};
-
 	struct AllocationHeader {
-		size_t blockSize;
-		char padding;
+		size_t size;
+		uchar adjustment;
 	};
 
-	using Node = LinkedList<FreeHeader>::Node;
+	struct FreeBlock {
+		size_t size;
+		FreeBlock *next;
+	};
 
 public:
-	FreeListAllocator(const size_t);
+	FreeListAllocator(size_t);
 	~FreeListAllocator();
 
 	FreeListAllocator(FreeListAllocator const&) = delete;
@@ -42,189 +41,230 @@ public:
 #endif
 
 private:
-	void coalescence(Node*, Node*);
-	void find(const size_t, const size_t, size_t&, Node*&, Node*&);
-	const size_t calculatePadding(const size_t, const size_t);
-	const size_t calculatePadding(const size_t, const size_t, const size_t);
+	bool isAligned(const AllocationHeader* address) const;
+	uchar alignForwardAdjustment(const void*, uchar) const;
+	uchar alignForwardAdjustmentWithHeader(const void*, uchar) const;
+	const void* add(const void*, size_t) const;
+	void* subtract(void*, size_t) const;
 
 private:
-	void* pAlloc;
-	LinkedList<FreeHeader> freeList;
+	FreeBlock* pAlloc;
 	size_t nTotalSize;
 	size_t nUsed;
-	size_t nPeak;
+	size_t nAlloc;
 };
 
-FreeListAllocator::FreeListAllocator(const size_t totalSize)
-	: nTotalSize(totalSize)
+FreeListAllocator::FreeListAllocator(size_t size)
+	: nTotalSize(size)
 	, nUsed(0)
-	, nPeak(0)
+	, nAlloc(0)
 	, pAlloc(nullptr)
-{}
+{
+	assert(size > sizeof(FreeBlock));
+}
 
 FreeListAllocator::~FreeListAllocator() {
 	destroy();
+	nTotalSize = 0;
+	nUsed = 0;
+	nAlloc = 0;
 	assert(pAlloc == nullptr);
 }
 
 void FreeListAllocator::init() {
 	assert(pAlloc == nullptr);
-	pAlloc = new uchar[nTotalSize];
-
-	Node* root = reinterpret_cast<Node*>(pAlloc);
-	root->data.blockSize = nTotalSize;
-	root->pNext = nullptr;
-	freeList.pHead = nullptr;
-	freeList.insert(nullptr, root);
+	pAlloc = (FreeBlock*)(new uchar[nTotalSize]);
+	pAlloc->size = nTotalSize;
+	pAlloc->next = nullptr;
 }
 
 void FreeListAllocator::destroy() {
 	assert(pAlloc);
-	
-	if (pAlloc) {
-		delete[] pAlloc;
-		pAlloc = nullptr;
-	}
+	delete[] pAlloc;
+	pAlloc = nullptr;
 }
 
 void* FreeListAllocator::alloc(size_t size, size_t alignment) {
-	assert(size >= sizeof(Node));
-	assert(alignment >= 8);
 	assert(pAlloc);
+	assert(alignment >= 8);
+	assert(size != 0);
 
-	const size_t allocHeaderSize = sizeof(AllocationHeader);
-	const size_t freeHeaderSize = sizeof(FreeHeader);
+	FreeBlock* prev_free_block = nullptr;
+	FreeBlock* free_block = reinterpret_cast<FreeBlock*>(pAlloc);
 
-	size_t padding;
-	Node* affectedNode;
-	Node* previousNode;
+	FreeBlock* best_fit_prev = nullptr;
+	FreeBlock* best_fit = nullptr;
+	uchar	   best_fit_adjustment = 0;
+	size_t     best_fit_total_size = 0;
 
-	find(size, alignment, padding, previousNode, affectedNode);
-	assert(affectedNode != nullptr);
+	//Find best fit
+	while (free_block != nullptr) {
+		//Calculate adjustment needed to keep object correctly aligned
+		uchar adjustment = alignForwardAdjustmentWithHeader(free_block, alignment);
+		size_t total_size = size + adjustment;
 
-	const size_t alignPadding = padding - allocHeaderSize;
-	const size_t requiredSize = size + padding;
-	const size_t rest = affectedNode->data.blockSize - requiredSize;
-
-	if (rest > 0) {
-		Node* newFreeNode = reinterpret_cast<Node*>((size_t)affectedNode + requiredSize);
-		newFreeNode->data.blockSize = rest;
-		freeList.insert(affectedNode, newFreeNode);
-	}
-
-	freeList.remove(previousNode, affectedNode);
-
-	const size_t headerAddress = (size_t)affectedNode + alignPadding;
-	const size_t dataAddress = headerAddress + allocHeaderSize;
-	((AllocationHeader*)headerAddress)->blockSize = requiredSize;
-	((AllocationHeader*)headerAddress)->padding = (char)alignPadding;
-
-	nUsed += requiredSize;
-	nPeak = max(nPeak, nUsed);
-	return reinterpret_cast<void*>(dataAddress);
-}
-
-void FreeListAllocator::free(void* p) {
-	const size_t currentAddress = (size_t)p;
-	const size_t headerAddress = currentAddress - sizeof(AllocationHeader);
-	const AllocationHeader* allocationHeader { reinterpret_cast<AllocationHeader*>(headerAddress) };
-
-	Node* pFreeNode = reinterpret_cast<Node*>(headerAddress);
-	pFreeNode->data.blockSize = allocationHeader->blockSize + allocationHeader->padding;
-	pFreeNode->pNext = nullptr;
-
-	Node* pIt = freeList.pHead;
-	Node* pItPrev = nullptr;
-
-	while (pIt != nullptr) {
-		if (p < pIt) {
-			freeList.insert(pItPrev, pFreeNode);
+		//If its an exact match use this free block
+		if (free_block->size == total_size) {
+			best_fit_prev = prev_free_block;
+			best_fit = free_block;
+			best_fit_adjustment = adjustment;
+			best_fit_total_size = total_size;
 			break;
 		}
 
-		pItPrev = pIt;
-		pIt = pIt->pNext;
-	}
-
-	nUsed -= pFreeNode->data.blockSize;
-	coalescence(pItPrev, pFreeNode);
-}
-
-void FreeListAllocator::coalescence(Node* prevNode, Node* freeNode) {
-	if (freeNode->pNext != nullptr && (size_t)freeNode + freeNode->data.blockSize == (size_t)freeNode->pNext) {
-		freeNode->data.blockSize += freeNode->pNext->data.blockSize;
-		freeList.remove(freeNode, freeNode->pNext);
-	}
-
-	if (prevNode != nullptr && (size_t)prevNode + prevNode->data.blockSize == (size_t)freeNode) {
-		prevNode->data.blockSize += freeNode->data.blockSize;
-		freeList.remove(prevNode, freeNode);
-	}
-}
-
-// Find Best-Fit
-void FreeListAllocator::find(const size_t size, const size_t alignment, size_t& padding, Node*& previousNode, Node*& foundNode) {
-	constexpr size_t smallestDiff = numeric_limits<size_t>::max();
-	Node* bestBlock = nullptr;
-	Node* it = freeList.pHead;
-	Node* itPrev = nullptr;
-
-	while (it != nullptr) {
-		padding = calculatePadding((size_t)it, alignment, sizeof(AllocationHeader));
-		const size_t requiredSpace = size + padding;
-		
-		if (it->data.blockSize >= requiredSpace && (it->data.blockSize - requiredSpace < smallestDiff)) {
-			bestBlock = it;
+		//If its a better fit switch
+		if (free_block->size > total_size && (best_fit == nullptr || free_block->size < best_fit->size)) {
+			best_fit_prev = prev_free_block;
+			best_fit = free_block;
+			best_fit_adjustment = adjustment;
+			best_fit_total_size = total_size;
 		}
 
-		itPrev = it;
-		it = it->pNext;
+		prev_free_block = free_block;
+		free_block = free_block->next;
 	}
 
-	previousNode = itPrev;
-	foundNode = bestBlock;
-}
+	if (best_fit == nullptr) {
+		return nullptr;
+	}
 
-const size_t FreeListAllocator::calculatePadding(const size_t baseAddress, const size_t alignment) {
-	const size_t multiplier = (baseAddress / alignment) + 1;
-	const size_t alignedAddress = multiplier * alignment;
-	const size_t padding = alignedAddress - baseAddress;
-	return padding;
-}
+	//If allocations in the remaining memory will be impossible
+	if (best_fit->size - best_fit_total_size <= sizeof(AllocationHeader)) {
+		//Increase allocation size instead of creating a new FreeBlock
+		best_fit_total_size = best_fit->size;
 
-const size_t FreeListAllocator::calculatePadding(const size_t baseAddress, const size_t alignment, const size_t headerSize) {
-	size_t padding = calculatePadding(baseAddress, alignment);
-	size_t neededSpace = headerSize;
-
-	if (padding < neededSpace) {
-		neededSpace -= padding;
-
-		if (neededSpace % alignment > 0) {
-			padding += alignment * (1 + (neededSpace / alignment));
+		if (best_fit_prev != nullptr) {
+			best_fit_prev->next = best_fit->next;
 		} else {
-			padding += alignment * (neededSpace / alignment);
+			pAlloc = best_fit->next;
+		}
+	} else {
+		//Prevent new block from overwriting best fit block info
+		assert(best_fit_total_size > sizeof(FreeBlock));
+
+		//Else create a new FreeBlock containing remaining memory
+		FreeBlock* new_block = (FreeBlock*)(add(best_fit, best_fit_total_size));
+		new_block->size = best_fit->size - best_fit_total_size;
+		new_block->next = best_fit->next;
+
+		if (best_fit_prev != nullptr) {
+			best_fit_prev->next = new_block;
+		} else {
+			pAlloc = new_block;
 		}
 	}
 
-	return padding;
+	uintptr_t aligned_address = (uintptr_t)best_fit + best_fit_adjustment;
+
+	AllocationHeader* header = (AllocationHeader*)(aligned_address - sizeof(AllocationHeader));
+	header->size = best_fit_total_size;
+	header->adjustment = best_fit_adjustment;
+
+	assert(isAligned(header));
+
+	nUsed += best_fit_total_size;
+	++nAlloc;
+
+	assert(alignForwardAdjustment((void*)aligned_address, alignment) == 0);
+	return (void*)aligned_address;
+}
+
+void FreeListAllocator::free(void* p) {
+	assert(p != nullptr);
+
+	AllocationHeader* header = (AllocationHeader*)subtract(p, sizeof(AllocationHeader));
+
+	uintptr_t   block_start = reinterpret_cast<uintptr_t>(p) - header->adjustment;
+	size_t		block_size = header->size;
+	uintptr_t   block_end = block_start + block_size;
+
+	FreeBlock* prev_free_block = nullptr;
+	FreeBlock* free_block = pAlloc;
+
+	while (free_block != nullptr) {
+		if ((uintptr_t)free_block >= block_end) {
+			break;
+		}
+
+		prev_free_block = free_block;
+		free_block = free_block->next;
+	}
+
+	if (prev_free_block == nullptr) {
+		prev_free_block = (FreeBlock*)block_start;
+		prev_free_block->size = block_size;
+		prev_free_block->next = pAlloc;
+
+		pAlloc = prev_free_block;
+	} else if ((uintptr_t)prev_free_block + prev_free_block->size == block_start) {
+		prev_free_block->size += block_size;
+	} else {
+		FreeBlock* temp = (FreeBlock*)block_start;
+		temp->size = block_size;
+		temp->next = prev_free_block->next;
+
+		prev_free_block->next = temp;
+		prev_free_block = temp;
+	}
+
+	assert(prev_free_block != nullptr);
+
+	if ((uintptr_t)prev_free_block + prev_free_block->size == (uintptr_t)prev_free_block->next) {
+		prev_free_block->size += prev_free_block->next->size;
+		prev_free_block->next = prev_free_block->next->next;
+	}
+
+	--nAlloc;
+	nUsed -= block_size;
+}
+
+uchar FreeListAllocator::alignForwardAdjustment(const void* address, uchar alignment) const {
+	uchar adjustment = alignment - (reinterpret_cast<uintptr_t>(address)& static_cast<uintptr_t>(alignment - 1));
+
+	if (adjustment == alignment) {
+		return 0;
+	}
+
+	return adjustment;
+}
+
+uchar FreeListAllocator::alignForwardAdjustmentWithHeader(const void* address, uchar alignment) const {
+	if (__alignof(AllocationHeader) > alignment) {
+		alignment = __alignof(AllocationHeader);
+	}
+
+	uchar adjustment = sizeof(AllocationHeader) + alignForwardAdjustment(add(address, sizeof(AllocationHeader)), alignment);
+	return adjustment;
 }
 
 bool FreeListAllocator::containsAddress(void* p) {
-	return p >= pAlloc && p < reinterpret_cast<uchar*>(pAlloc) + nTotalSize;
+	return p < pAlloc && p >= subtract(pAlloc, nUsed);
+}
+
+const void* FreeListAllocator::add(const void* p, size_t x) const {
+	return (const void*)(reinterpret_cast<uintptr_t>(p) + x);
+}
+
+void* FreeListAllocator::subtract(void* p, size_t x) const {
+	return (void*)(reinterpret_cast<uintptr_t>(p) - x);
+}
+
+bool FreeListAllocator::isAligned(const AllocationHeader* address) const {
+	return alignForwardAdjustment(address, __alignof(AllocationHeader)) == 0;
 }
 
 #ifdef _DEBUG
 void FreeListAllocator::dumpStat() const {
 	cout << "TOTAL SIZE:\t" << nTotalSize << endl;
 	cout << "USED SIZE:\t" << nUsed << endl;
-	cout << "PEAK SIZE:\t" << nPeak << endl;
-	Node* it = freeList.pHead;
+	cout << "ALLOCATIONS COUNT:\t" << nAlloc << endl;
+	FreeBlock* it = pAlloc;
 	int i = 0;
 
 	while (it != nullptr) {
 		cout << "=========================================================" << endl;
-		cout << "#" << (i + 1) << "\t0x" << &it << "\tsize:\t" << it->data.blockSize << endl;
-		it = it->pNext;
+		cout << "#" << (i + 1) << "\t0x" << &it << "\tsize:\t" << it->size << endl;
+		it = it->next;
 		++i;
 	}
 
@@ -234,16 +274,11 @@ void FreeListAllocator::dumpStat() const {
 void FreeListAllocator::dumpBlocks() const {
 
 }
-#endif	//!_DEBUG
 
 uint FreeListAllocator::getBlockSize(void* p) const {
-	Node* it = freeList.pHead;
-	while (it != nullptr) {
-		if (it == p) {
-			return it->data.blockSize;
-		}
-		it = it->pNext;
-	}
+	auto ptr = reinterpret_cast<FreeBlock*>(p);
+	return ptr->size;
 }
+#endif	//!_DEBUG
 
 #endif	//!_FREE_LIST_ALLOCATOR_HPP

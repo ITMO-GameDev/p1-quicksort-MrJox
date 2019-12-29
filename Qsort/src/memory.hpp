@@ -4,6 +4,7 @@
 #include "pch.h"
 #include "fixed_size_allocator.hpp"
 #include "free_list_allocator.hpp"
+using namespace std;
 
 class MemoryAllocator {
 private:
@@ -67,7 +68,7 @@ MemoryAllocator::~MemoryAllocator() {
 void MemoryAllocator::init() {
 	// init 6 pools with chunk sizes: 16, 32, 64, 128, 256, 512
 	for (size_t i = 0; i < memoryPools.size(); ++i) {
-		uint chunk_size = (uint)std::pow(2, i + 4);
+		uint chunk_size = (uint)pow(2, i + 4);
 		memoryPools[i]->init(chunk_size, POOL_CHUNKS_COUNT);
 	}
 
@@ -98,8 +99,8 @@ void* MemoryAllocator::alloc(size_t size) {
 
 	uint alignedSize = 8;
 	if (size > 8) {
-		auto closestPower = std::round(std::log(size) / std::log(2));
-		alignedSize = (uint)std::pow(2, closestPower);
+		auto closestPower = ceil(log(size) / log(2));
+		alignedSize = (uint)pow(2, closestPower);
 	}
 
 	if (alignedSize >= POOL_MIN_CHUNK_SIZE && alignedSize <= POOL_MAX_CHUNK_SIZE) {
@@ -183,7 +184,7 @@ void MemoryAllocator::free(void* p) {
 }
 
 size_t MemoryAllocator::getPoolIndex(size_t size) {
-	return (size_t)(std::log(size) / std::log(2)) - 4;
+	return (size_t)(log(size) / log(2)) - 4;
 }
 
 #ifdef _DEBUG
@@ -202,6 +203,7 @@ void MemoryAllocator::dumpStat() const {
 
 	cout << "TOTAL MEMORY ALLOCATED:\t" << nTotalMemUsed << endl;
 	cout << "TOTAL MEMORY FREED:\t" << nTotalMemFreed << endl;
+	cout << endl;
 }
 
 void MemoryAllocator::dumpBlocks() const {

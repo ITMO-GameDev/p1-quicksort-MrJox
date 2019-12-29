@@ -12,7 +12,7 @@ public:
 	};
 
 public:
-	LinkedList() = default;
+	LinkedList() : pHead(nullptr) {}
 	void insert(Node*, Node*);
 	void remove(Node*, Node*);
 

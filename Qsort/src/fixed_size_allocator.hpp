@@ -2,7 +2,7 @@
 #define _FIXED_SIZE_ALLOCATOR_HPP
 
 #include "pch.h"
-
+using namespace std;
 using uint	= unsigned int;
 using uchar = unsigned char;
 
@@ -53,6 +53,7 @@ FixedSizeAllocator::FixedSizeAllocator()
 FixedSizeAllocator::~FixedSizeAllocator() {
 	destroy();
 	assert(pAlloc == nullptr);
+	assert(nAllocChunksCount == 0);
 }
 
 void FixedSizeAllocator::init(uint _chunkSize, uint _chunksCount) {
@@ -110,6 +111,7 @@ void FixedSizeAllocator::free(void* p) {
 
 	pNext = reinterpret_cast<uchar*>(p);
 	++nFreeChunksCount;
+	--nAllocChunksCount;
 }
 
 bool FixedSizeAllocator::containsAddress(void* p) {
@@ -130,7 +132,7 @@ void FixedSizeAllocator::dumpStat() const {
 	cout << "FREE CHUNKS COUNT:\t" << nFreeChunksCount << endl;
 	cout << "ALLOCATED CHUNKS COUNT:\t" << nAllocChunksCount << endl;
 
-	for (size_t i = 0; i < nAllocChunksCount; ++i) {
+	for (uint i = 0; i < nAllocChunksCount; ++i) {
 		uchar* chunk = addressFromIndex(i);
 		cout << "=========================================================" << endl;
 		cout << "#" << (i + 1) << "\t0x" << &chunk << "\tsize:\t" << nChunkSize << endl;
